@@ -7,30 +7,56 @@
 #define PORT 8080
 #define BUFFER_SIZE 1024
 #define BACKLOG 3
+#define MAX_PATH_LENGTH 256
 
-void send_file(int socket, const char *filename) {
+void send_file_with_headers(int socket, const char *filename) {
     FILE *file = fopen(filename, "r");
+
     if (file == NULL) {
-        const char *not_found = "File not found\n";
+        const char *not_found = "HTTP/1.0 404 Not Found\r\nContent-Type: text/plain\r\n\r\nFile not found\n";
         write(socket, not_found, strlen(not_found));
+        printf("File not found: %s\n", filename);
         return;
     }
 
+    // Determine content type based on file extension
+    const char *content_type = "text/plain";
+    char *dot = strrchr(filename, '.');
+    if (dot) {
+        if (strcmp(dot, ".html") == 0 || strcmp(dot, ".htm") == 0) {
+            content_type = "text/html";
+        } else if (strcmp(dot, ".css") == 0) {
+            content_type = "text/css";
+        } else if (strcmp(dot, ".js") == 0) {
+            content_type = "application/javascript";
+        }
+    }
+
+    // Send HTTP headers
+    char headers[BUFFER_SIZE];
+    snprintf(headers, sizeof(headers),
+             "HTTP/1.0 200 OK\r\n"
+             "Content-Type: %s\r\n"
+             "\r\n", content_type);
+    write(socket, headers, strlen(headers));
+
+    // Send file content
     char buffer[BUFFER_SIZE];
     size_t bytes_read;
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
         write(socket, buffer, bytes_read);
     }
 
+    printf("File sent successfully with headers: %s\n", filename);
+
     fclose(file);
 }
 
 int main() {
-    int server_fd, new_socket;
+    int server_fd, client_socket;
     struct sockaddr_in address;
-    int addrlen = sizeof(address);
+    socklen_t addrlen = sizeof(address);
     char buffer[BUFFER_SIZE] = {0};
-    char *hello = "HTTP/1.1 200 OK\nContent-Type: text/html\n\n<!DOCTYPE html><html><body><h1>Hello, World!</h1></body></html>";
 
     // Create socket file descriptor
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
@@ -44,13 +70,13 @@ int main() {
 
     // Bind the socket to the network address and port
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
-        perror("bind failed");
+        perror("Bind failed");
         exit(EXIT_FAILURE);
     }
 
     // Start listening for connections
     if (listen(server_fd, BACKLOG) < 0) {
-        perror("listen failed");
+        perror("Listen failed");
         exit(EXIT_FAILURE);
     }
 
@@ -58,20 +84,42 @@ int main() {
         printf("\nWaiting for a connection...\n");
 
         // Accept a client connection
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
-            perror("accept failed");
+        if ((client_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen)) < 0) {
+            perror("Accept failed");
             exit(EXIT_FAILURE);
         }
 
         // Read the request
-        read(new_socket, buffer, BUFFER_SIZE);
-        printf("%s\n", buffer);
+        ssize_t bytes_read = read(client_socket, buffer, BUFFER_SIZE - 1);
+        if (bytes_read == 0) {continue;}
 
-        // Send a response
-        write(new_socket, hello, strlen(hello));
-        printf("Hello message sent\n");
+        buffer[bytes_read] = '\0';
+        printf("Received request:\n%s\n\n", buffer);
 
-        close(new_socket);
+        char method[16], path[MAX_PATH_LENGTH];
+        sscanf(buffer, "%s %s", method, path);
+
+        // HTTP 0.9 parsing for now, only implements GET method
+        if (strcmp(method, "GET") == 0) {
+            //printf("Path: %s\n", path);
+
+            // Prepend 'site/' to the file path
+            char full_path[MAX_PATH_LENGTH];
+            snprintf(full_path, sizeof(full_path), "site%s", path);
+
+            // Handle root path
+            if (strcmp(path, "/") == 0) {
+                snprintf(full_path, sizeof(full_path), "site/index.html");
+            }
+
+            send_file_with_headers(client_socket, full_path);
+        } else {
+            const char *error = "Only GET method is supported\n";
+            printf("%s", error);
+            write(client_socket, error, strlen(error));
+        }
+
+        close(client_socket);
     }
 
     return 0;
