@@ -9,6 +9,20 @@
 #define BACKLOG 3
 #define MAX_PATH_LENGTH 256
 
+// Determine content type based on file extension
+const char* get_content_type(const char *filename) {
+    const char *dot = strrchr(filename, '.');
+    if (dot) {
+        if (strcmp(dot, ".html") == 0 || strcmp(dot, ".htm") == 0) return "text/html";
+        if (strcmp(dot, ".css") == 0) return "text/css";
+        if (strcmp(dot, ".js") == 0) return "application/javascript";
+        if (strcmp(dot, ".jpg") == 0 || strcmp(dot, ".jpeg") == 0) return "image/jpeg";
+        if (strcmp(dot, ".png") == 0) return "image/png";
+        if (strcmp(dot, ".gif") == 0) return "image/gif";
+    }
+    return "text/plain";
+}
+
 void send_file_with_headers(int socket, const char *filename) {
     FILE *file = fopen(filename, "r");
 
@@ -19,18 +33,7 @@ void send_file_with_headers(int socket, const char *filename) {
         return;
     }
 
-    // Determine content type based on file extension
-    const char *content_type = "text/plain";
-    char *dot = strrchr(filename, '.');
-    if (dot) {
-        if (strcmp(dot, ".html") == 0 || strcmp(dot, ".htm") == 0) {
-            content_type = "text/html";
-        } else if (strcmp(dot, ".css") == 0) {
-            content_type = "text/css";
-        } else if (strcmp(dot, ".js") == 0) {
-            content_type = "application/javascript";
-        }
-    }
+    const char *content_type = get_content_type(filename);
 
     // Send HTTP headers
     char headers[BUFFER_SIZE];
