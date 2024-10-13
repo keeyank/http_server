@@ -97,11 +97,10 @@ int main() {
         printf("Received request:\n%s\n\n", buffer);
 
         char method[16], path[MAX_PATH_LENGTH];
-        sscanf(buffer, "%s %s", method, path);
+        sscanf(buffer, "%15s %255s", method, path);
 
         // HTTP 0.9 parsing for now, only implements GET method
         if (strcmp(method, "GET") == 0) {
-            //printf("Path: %s\n", path);
 
             // Prepend 'site/' to the file path
             char full_path[MAX_PATH_LENGTH];
@@ -114,8 +113,8 @@ int main() {
 
             send_file_with_headers(client_socket, full_path);
         } else {
-            const char *error = "Only GET method is supported\n";
-            printf("%s", error);
+            const char *error = "HTTP/1.0 501 Not Implemented\r\nContent-Type: text/plain\r\n\r\nOnly GET method is supported\n";
+            printf("Sent response:\n%s\n", error);
             write(client_socket, error, strlen(error));
         }
 
